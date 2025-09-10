@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import axios from "axios";
 import { AgencyLayout } from "@/components/agency/AgencyLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Client } from "@/types/clients";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -36,63 +39,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-interface Client {
-  id: string;
-  name: string;
-  company: string;
-  email: string;
-  phone: string;
-  status: 'active' | 'inactive' | 'pending';
-  projects: number;
-  lastContact: string;
-  avatar?: string;
-}
 
-const clients: Client[] = [
-  {
-    id: "1",
-    name: "Marie Dubois",
-    company: "TechCorp",
-    email: "marie@techcorp.com",
-    phone: "+33 1 23 45 67 89",
-    status: "active",
-    projects: 3,
-    lastContact: "2024-01-15",
-    avatar: "/placeholder.svg"
-  },
-  {
-    id: "2", 
-    name: "Pierre Martin",
-    company: "StartupXYZ",
-    email: "pierre@startupxyz.com",
-    phone: "+33 1 98 76 54 32",
-    status: "active",
-    projects: 1,
-    lastContact: "2024-01-12"
-  },
-  {
-    id: "3",
-    name: "Sophie Laurent",
-    company: "LocalBiz",
-    email: "sophie@localbiz.fr",
-    phone: "+33 1 11 22 33 44",
-    status: "pending",
-    projects: 0,
-    lastContact: "2024-01-10"
-  },
-  {
-    id: "4",
-    name: "Jean Rousseau",
-    company: "DesignStudio",
-    email: "jean@designstudio.com",
-    phone: "+33 1 55 66 77 88",
-    status: "inactive",
-    projects: 5,
-    lastContact: "2023-12-20"
-  }
-];
+
+const API_URL = "http://127.0.0.1:8000/api/clients";
 
 export default function ClientsList() {
+  const [clients, setClients] = useState<Client[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -101,38 +53,26 @@ export default function ClientsList() {
     company: "",
     email: "",
     phone: "",
-    status: "pending" as Client['status']
+    status: "pending" as Client["status"],
   });
   const { toast } = useToast();
 
-  const filteredClients = clients.filter(client => {
-    const matchesSearch = client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         client.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         client.email.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === "all" || client.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
+  // Charger les clients depuis Laravel
+  useEffect(() => {
+    fetchClients();
+  }, []);
 
-  const getStatusBadge = (status: Client['status']) => {
-    switch (status) {
-      case 'active':
-        return <Badge className="bg-success/10 text-success hover:bg-success/20">Actif</Badge>;
-      case 'pending':
-        return <Badge className="bg-warning/10 text-warning hover:bg-warning/20">En attente</Badge>;
-      case 'inactive':
-        return <Badge variant="secondary">Inactif</Badge>;
-      default:
-        return <Badge variant="outline">Inconnu</Badge>;
+  const fetchClients = async () => {
+    try {
+      const res = await axios.get(API_URL);
+      setClients(res.data as Client[]);
+    } catch (error) {
+      console.error("Erreur lors du chargement des clients", error);
     }
   };
 
-  const getInitials = (name: string) => {
-    return name.split(' ').map(n => n[0]).join('').toUpperCase();
-  };
-
-  const handleCreateClient = () => {
+  // Créer un client
+  const handleCreateClient = async () => {
     if (!newClient.name || !newClient.email) {
       toast({
         title: "Erreur",
@@ -142,20 +82,96 @@ export default function ClientsList() {
       return;
     }
 
-    toast({
-      title: "Client créé",
-      description: `${newClient.name} a été ajouté avec succès.`,
-    });
+    try {
+      const res = await axios.post<Client>(API_URL, newClient);
+      setClients((prev) => [...prev, res.data]);
 
-    // Reset form
-    setNewClient({
-      name: "",
-      company: "",
-      email: "",
-      phone: "",
-      status: "pending"
-    });
-    setIsDialogOpen(false);
+      toast({
+        title: "Client créé",
+        description: `${newClient.name} a été ajouté avec succès.`,
+      });
+
+      setNewClient({ name: "", company: "", email: "", phone: "", status: "pending" });
+      setIsDialogOpen(false);
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible de créer le client.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Supprimer un client
+  const handleDeleteClient = async (id: number) => {
+    try {
+      await axios.delete(`${API_URL}/${id}`);
+      setClients((prev) => prev.filter((client) => client.id !== id));
+
+      toast({
+        title: "Client supprimé",
+        description: "Le client a été supprimé avec succès.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible de supprimer le client.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Mettre à jour un client (exemple basique : changer le statut)
+  const handleUpdateStatus = async (id: number, status: Client["status"]) => {
+    try {
+      const res = await axios.put(`${API_URL}/${id}`, { status });
+     setClients((prev) =>
+  prev.map((client) => (client.id === id ? (res.data as Client) : client))
+);
+
+      toast({
+        title: "Client mis à jour",
+        description: `Le statut a été modifié.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Impossible de mettre à jour le client.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const filteredClients = clients.filter((client) => {
+    const matchesSearch =
+      client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.email.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesStatus = statusFilter === "all" || client.status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  const getStatusBadge = (status: Client["status"]) => {
+    switch (status) {
+      case "active":
+        return <Badge className="bg-success/10 text-success hover:bg-success/20">Actif</Badge>;
+      case "pending":
+        return <Badge className="bg-warning/10 text-warning hover:bg-warning/20">En attente</Badge>;
+      case "inactive":
+        return <Badge variant="secondary">Inactif</Badge>;
+      default:
+        return <Badge variant="outline">Inconnu</Badge>;
+    }
+  };
+
+  const getInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase();
   };
 
   return (
@@ -191,7 +207,7 @@ export default function ClientsList() {
                   <Input
                     id="name"
                     value={newClient.name}
-                    onChange={(e) => setNewClient(prev => ({ ...prev, name: e.target.value }))}
+                    onChange={(e) => setNewClient((prev) => ({ ...prev, name: e.target.value }))}
                     className="col-span-3"
                     placeholder="Jean Dupont"
                   />
@@ -203,7 +219,7 @@ export default function ClientsList() {
                   <Input
                     id="company"
                     value={newClient.company}
-                    onChange={(e) => setNewClient(prev => ({ ...prev, company: e.target.value }))}
+                    onChange={(e) => setNewClient((prev) => ({ ...prev, company: e.target.value }))}
                     className="col-span-3"
                     placeholder="TechCorp"
                   />
@@ -216,7 +232,7 @@ export default function ClientsList() {
                     id="email"
                     type="email"
                     value={newClient.email}
-                    onChange={(e) => setNewClient(prev => ({ ...prev, email: e.target.value }))}
+                    onChange={(e) => setNewClient((prev) => ({ ...prev, email: e.target.value }))}
                     className="col-span-3"
                     placeholder="jean@techcorp.com"
                   />
@@ -228,7 +244,7 @@ export default function ClientsList() {
                   <Input
                     id="phone"
                     value={newClient.phone}
-                    onChange={(e) => setNewClient(prev => ({ ...prev, phone: e.target.value }))}
+                    onChange={(e) => setNewClient((prev) => ({ ...prev, phone: e.target.value }))}
                     className="col-span-3"
                     placeholder="+33 1 23 45 67 89"
                   />
@@ -237,9 +253,11 @@ export default function ClientsList() {
                   <Label htmlFor="status" className="text-right">
                     Statut
                   </Label>
-                  <Select 
-                    value={newClient.status} 
-                    onValueChange={(value: Client['status']) => setNewClient(prev => ({ ...prev, status: value }))}
+                  <Select
+                    value={newClient.status}
+                    onValueChange={(value: Client["status"]) =>
+                      setNewClient((prev) => ({ ...prev, status: value }))
+                    }
                   >
                     <SelectTrigger className="col-span-3">
                       <SelectValue />
@@ -256,9 +274,7 @@ export default function ClientsList() {
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Annuler
                 </Button>
-                <Button onClick={handleCreateClient}>
-                  Créer le client
-                </Button>
+                <Button onClick={handleCreateClient}>Créer le client</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -329,11 +345,11 @@ export default function ClientsList() {
                           Voir le profil
                         </Link>
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleUpdateStatus(client.id, "active")}>
                         <Edit className="mr-2 h-4 w-4" />
-                        Modifier
+                        Activer
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">
+                      <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteClient(client.id)}>
                         <Trash2 className="mr-2 h-4 w-4" />
                         Supprimer
                       </DropdownMenuItem>
@@ -359,19 +375,20 @@ export default function ClientsList() {
                   <div className="flex items-center gap-2 text-sm">
                     <Calendar className="h-3 w-3 text-muted-foreground" />
                     <span className="text-muted-foreground">
-                      Dernier contact: {new Date(client.lastContact).toLocaleDateString('fr-FR')}
+                      Dernier contact:{" "}
+                      {client.lastContact
+                        ? new Date(client.lastContact).toLocaleDateString("fr-FR")
+                        : "N/A"}
                     </span>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-border">
                   <span className="text-sm font-medium">
-                    {client.projects} projet{client.projects !== 1 ? 's' : ''}
+                    {client.projects} projet{client.projects !== 1 ? "s" : ""}
                   </span>
                   <Button variant="outline" size="sm" asChild>
-                    <Link to={`/agency/clients/${client.id}`}>
-                      Voir détails
-                    </Link>
+                    <Link to={`/agency/clients/${client.id}`}>Voir détails</Link>
                   </Button>
                 </div>
               </CardContent>
@@ -389,7 +406,13 @@ export default function ClientsList() {
               <p className="text-muted-foreground text-center mb-4">
                 Aucun client ne correspond à vos critères de recherche.
               </p>
-              <Button variant="outline" onClick={() => { setSearchTerm(""); setStatusFilter("all"); }}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSearchTerm("");
+                  setStatusFilter("all");
+                }}
+              >
                 Réinitialiser les filtres
               </Button>
             </CardContent>

@@ -19,7 +19,10 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [env('FRONTEND_URL', 'http://localhost:3000')],
+    'allowed_origins' => [
+    'http://localhost:3000',
+    'http://26.191.252.150:8080', // ✅ ton frontend
+],
 
     'allowed_origins_patterns' => [],
 

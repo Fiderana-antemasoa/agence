@@ -1,0 +1,13 @@
+// src/types/client.ts
+export interface Client {
+  id: number;
+  name: string;
+  company?: string;
+  email: string;
+  phone?: string;
+  status: "active" | "inactive" | "pending";
+  projects: number;
+  lastContact?: string;
+  avatar?: string;
+  notes?: string;
+}
