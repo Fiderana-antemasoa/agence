@@ -21,7 +21,8 @@ return [
 
     'allowed_origins' => [
     'http://localhost:3000',
-    'http://26.191.252.150:8080', // ✅ ton frontend
+    'http://localhost:8080',
+    'http://26.191.252.150:8080',
 ],
 
     'allowed_origins_patterns' => [],
@@ -35,3 +36,4 @@ return [
     'supports_credentials' => true,
 
 ];
+

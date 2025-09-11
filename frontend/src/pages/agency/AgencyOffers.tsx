@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AgencyLayout } from "@/components/agency/AgencyLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,76 +11,88 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Search, Plus, Filter, ShoppingCart, Clock, CheckCircle, Edit } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-const offers = [
-  {
-    id: 1,
-    title: "Pack Site Web Premium",
-    description: "Site web complet avec hébergement et maintenance",
-    price: "2,999€",
-    status: "active",
-    category: "web",
-    clientsCount: 8,
-    validUntil: "2024-12-31"
-  },
-  {
-    id: 2,
-    title: "Référencement SEO Avancé",
-    description: "Optimisation complète pour les moteurs de recherche",
-    price: "1,499€",
-    status: "active",
-    category: "seo",
-    clientsCount: 12,
-    validUntil: "2024-11-30"
-  },
-  {
-    id: 3,
-    title: "Campagne Publicitaire Google Ads",
-    description: "Gestion complète de vos campagnes publicitaires",
-    price: "899€",
-    status: "pending",
-    category: "marketing",
-    clientsCount: 5,
-    validUntil: "2024-10-15"
-  }
-];
-
 const getStatusBadge = (status: string) => {
   switch (status) {
     case "active":
-      return <Badge className="bg-success/10 text-success border-success/20"><CheckCircle className="w-3 h-3 mr-1" />Active</Badge>;
+      return (
+        <Badge className="bg-success/10 text-success border-success/20">
+          <CheckCircle className="w-3 h-3 mr-1" />Active
+        </Badge>
+      );
     case "pending":
-      return <Badge variant="secondary"><Clock className="w-3 h-3 mr-1" />En attente</Badge>;
+      return (
+        <Badge variant="secondary">
+          <Clock className="w-3 h-3 mr-1" />En attente
+        </Badge>
+      );
     default:
       return <Badge variant="outline">Inconnu</Badge>;
   }
 };
 
+//composant!!!
 export default function AgencyOffers() {
   const { toast } = useToast();
+
+  // ✅ State pour stocker les offres
+  const [offers, setOffers] = useState<any[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newOffer, setNewOffer] = useState({
     title: "",
     description: "",
     price: "",
     category: "",
-    validUntil: ""
+    validUntil: "",
   });
 
-  const handleEditOffer = (offerId: number, title: string) => {
-    toast({
-      title: "Modification d'offre",
-      description: `Ouverture de l'éditeur pour "${title}"`,
-    });
-  };
+  const API_URL = "http://127.0.0.1:8000/api/offers";
 
+  // Recherche
+  const [searchTerm, setSearchTerm] = useState("");
+
+// Édition
+  const [editingOffer, setEditingOffer] = useState<any | null>(null);
+
+  useEffect(() => {
+    fetch(API_URL) // envoie une requête GET à Laravel
+      .then(res => res.json()) // récupère les données JSON
+      .then(data => setOffers(data)) // met à jour le state React
+      .catch(err => console.error("Erreur API", err));
+  }, []);
+
+// Liste filtrée par recherche
+  const filteredOffers = offers.filter(offer =>
+    offer.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    offer.description.toLowerCase().includes(searchTerm.toLowerCase())
+);
+
+
+
+  const handleEditOffer = (offer: any) => {
+    setEditingOffer(offer);       // On garde l’offre à modifier
+    setNewOffer({
+      title: offer.title,
+      description: offer.description,
+      price: offer.price,
+      category: offer.category,
+      validUntil: offer.validUntil || ""
+  });
+    setIsDialogOpen(true);
+};
   const handleSellOffer = (offerId: number, title: string) => {
+    setOffers(prev =>
+      prev.map(o =>
+        o.id === offerId ? { ...o, clientsCount: o.clientsCount + 1 } : o
+      )
+    );
     toast({
-      title: "Vente d'offre",
-      description: `Processus de vente initié pour "${title}"`,
+      title: "Vente enregistrée",
+      description: `Un client ajouté à "${title}".`,
     });
   };
 
-  const handleCreateOffer = () => {
+
+  const handleCreateOrUpdateOffer = () => {
     if (!newOffer.title || !newOffer.price || !newOffer.category) {
       toast({
         title: "Erreur",
@@ -90,21 +102,39 @@ export default function AgencyOffers() {
       return;
     }
 
-    toast({
-      title: "Offre créée",
-      description: `"${newOffer.title}" a été ajoutée avec succès.`,
-    });
+    const method = editingOffer ? "PUT" : "POST";
+    const url = editingOffer ? `${API_URL}/${editingOffer.id}` : API_URL;
 
-    // Reset form
-    setNewOffer({
-      title: "",
-      description: "",
-      price: "",
-      category: "",
-      validUntil: ""
-    });
-    setIsDialogOpen(false);
+    fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...newOffer,
+        status: editingOffer ? editingOffer.status : "active",
+        clientsCount: editingOffer ? editingOffer.clientsCount : 0
+      }),
+    })
+      .then(res => res.json())
+      .then(savedOffer => {
+        if (editingOffer) {
+          setOffers(prev => prev.map(o => o.id === savedOffer.id ? savedOffer : o));
+          toast({ title: "Offre modifiée", description: `"${savedOffer.title}" a été mise à jour.` });
+        } else {
+          setOffers(prev => [...prev, savedOffer]);
+          toast({ title: "Offre créée", description: `"${savedOffer.title}" a été ajoutée avec succès.` });
+        }
+        setNewOffer({ title: "", description: "", price: "", category: "", validUntil: "" });
+        setEditingOffer(null);
+        setIsDialogOpen(false);
+      })
+      .catch(err => {
+        console.error("Erreur API", err);
+        toast({ title: "Erreur", description: "Impossible de sauvegarder l'offre.", variant: "destructive" });
+      });
   };
+
+
+
   return (
     <AgencyLayout>
       <div className="space-y-6">
@@ -136,7 +166,7 @@ export default function AgencyOffers() {
                   <Input
                     id="title"
                     value={newOffer.title}
-                    onChange={(e) => setNewOffer(prev => ({ ...prev, title: e.target.value }))}
+                    onChange={(e) => setNewOffer((prev) => ({ ...prev, title: e.target.value }))}
                     className="col-span-3"
                     placeholder="Pack Site Web Premium"
                   />
@@ -148,7 +178,7 @@ export default function AgencyOffers() {
                   <Textarea
                     id="description"
                     value={newOffer.description}
-                    onChange={(e) => setNewOffer(prev => ({ ...prev, description: e.target.value }))}
+                    onChange={(e) => setNewOffer((prev) => ({ ...prev, description: e.target.value }))}
                     className="col-span-3"
                     placeholder="Description détaillée de l'offre..."
                     rows={3}
@@ -161,7 +191,7 @@ export default function AgencyOffers() {
                   <Input
                     id="price"
                     value={newOffer.price}
-                    onChange={(e) => setNewOffer(prev => ({ ...prev, price: e.target.value }))}
+                    onChange={(e) => setNewOffer((prev) => ({ ...prev, price: e.target.value }))}
                     className="col-span-3"
                     placeholder="2,999€"
                   />
@@ -170,9 +200,9 @@ export default function AgencyOffers() {
                   <Label htmlFor="category" className="text-right">
                     Catégorie *
                   </Label>
-                  <Select 
-                    value={newOffer.category} 
-                    onValueChange={(value) => setNewOffer(prev => ({ ...prev, category: value }))}
+                  <Select
+                    value={newOffer.category}
+                    onValueChange={(value) => setNewOffer((prev) => ({ ...prev, category: value }))}
                   >
                     <SelectTrigger className="col-span-3">
                       <SelectValue placeholder="Sélectionnez une catégorie" />
@@ -194,7 +224,7 @@ export default function AgencyOffers() {
                     id="validUntil"
                     type="date"
                     value={newOffer.validUntil}
-                    onChange={(e) => setNewOffer(prev => ({ ...prev, validUntil: e.target.value }))}
+                    onChange={(e) => setNewOffer((prev) => ({ ...prev, validUntil: e.target.value }))}
                     className="col-span-3"
                   />
                 </div>
@@ -203,24 +233,29 @@ export default function AgencyOffers() {
                 <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                   Annuler
                 </Button>
-                <Button onClick={handleCreateOffer}>
-                  Créer l'offre
+                <Button onClick={handleCreateOrUpdateOffer}>
+                  {editingOffer ? "Enregistrer les modifications" : "Créer l'offre"}
                 </Button>
+
               </DialogFooter>
             </DialogContent>
           </Dialog>
         </div>
 
-        {/* Filters */}
+        {/* ✅ Filters gardés */}
         <Card>
           <CardContent className="p-4">
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input 
-                  placeholder="Rechercher une offre..." 
+                <Input
+                  type="text"
+                  placeholder="Rechercher une offre..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
                 />
+
               </div>
               <Select>
                 <SelectTrigger className="w-full sm:w-48">
@@ -248,9 +283,9 @@ export default function AgencyOffers() {
           </CardContent>
         </Card>
 
-        {/* Offers Grid */}
+        {/* ✅ Offers Grid gardée */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {offers.map((offer) => (
+          {filteredOffers.map((offer) => (
             <Card key={offer.id} className="hover:shadow-md transition-shadow">
               <CardHeader>
                 <div className="flex items-start justify-between">
@@ -268,23 +303,23 @@ export default function AgencyOffers() {
                     {offer.clientsCount} clients
                   </Badge>
                 </div>
-                
-                <div className="text-xs text-muted-foreground">
-                  Valide jusqu'au {new Date(offer.validUntil).toLocaleDateString('fr-FR')}
-                </div>
-
+                {offer.validUntil && (
+                  <div className="text-xs text-muted-foreground">
+                    Valide jusqu'au {new Date(offer.validUntil).toLocaleDateString("fr-FR")}
+                  </div>
+                )}
                 <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className="flex-1"
-                    onClick={() => handleEditOffer(offer.id, offer.title)}
+                    onClick={() => handleEditOffer(offer)}
                   >
                     <Edit className="w-4 h-4 mr-1" />
                     Modifier
                   </Button>
-                  <Button 
-                    size="sm" 
+                  <Button
+                    size="sm"
                     className="flex-1"
                     onClick={() => handleSellOffer(offer.id, offer.title)}
                   >
@@ -297,7 +332,7 @@ export default function AgencyOffers() {
           ))}
         </div>
 
-        {/* Stats */}
+        {/* ✅ Stats gardées */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card>
             <CardContent className="p-6">
@@ -312,7 +347,6 @@ export default function AgencyOffers() {
               </div>
             </CardContent>
           </Card>
-          
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center space-x-2">
@@ -326,7 +360,6 @@ export default function AgencyOffers() {
               </div>
             </CardContent>
           </Card>
-          
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center space-x-2">
